@@ -1,0 +1,50 @@
+name: task-manager
+
+# Runs the whole system with one command: `docker compose up --build`.
+# - database  : PostgreSQL (not published to the host; reached over the compose
+#               network by the backend only)
+# - backend   : Spring Boot REST API on :4000, waits for the database
+# - frontend  : GOV.UK Express app on :3100, waits for the backend's healthcheck
+
+services:
+  database:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${DB_NAME:-task_manager}
+      POSTGRES_USER: ${DB_USER_NAME:-task_manager}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-task_manager}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${DB_USER_NAME:-task_manager} -d ${DB_NAME:-task_manager}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    environment:
+      DB_HOST: database
+      DB_PORT: '5432'
+      DB_NAME: ${DB_NAME:-task_manager}
+      DB_USER_NAME: ${DB_USER_NAME:-task_manager}
+      DB_PASSWORD: ${DB_PASSWORD:-task_manager}
+    depends_on:
+      database:
+        condition: service_healthy
+    ports:
+      - '${BACKEND_PORT:-4000}:4000'
+
+  frontend:
+    build: ./frontend
+    environment:
+      API_URL: http://backend:4000
+      PORT: '3100'
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - '${FRONTEND_PORT:-3100}:3100'
+
+volumes:
+  db-data:
